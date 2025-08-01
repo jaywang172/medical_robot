@@ -1,0 +1,64 @@
+# Raspberry Pi 專用依賴列表
+# 核心框架
+fastapi==0.104.1
+uvicorn==0.24.0
+websockets==12.0
+aiofiles==23.2.1
+pydantic==2.5.0
+
+# AI/CV處理
+torch==2.1.1
+torchvision==0.16.1
+ultralytics==8.0.206
+opencv-python==4.8.1.78
+Pillow==10.1.0
+numpy==1.25.2
+scikit-image==0.22.0
+
+# 3D數據處理（Polycam支持）
+trimesh==4.0.5
+open3d==0.18.0
+ezdxf==1.1.4
+laspy==2.5.1
+
+# 硬體控制 - Raspberry Pi版本
+gpiozero==1.6.2
+RPi.GPIO==0.7.1
+# 使用Adafruit的Raspberry Pi版本而非CircuitPython版本
+adafruit-circuitpython-motor>=2.0.0
+adafruit-circuitpython-register>=1.9.0
+
+# 感測器 - Raspberry Pi兼容版本
+pyserial==3.5
+smbus2==0.4.3
+# 移除busio和board，使用RPi特定的庫
+adafruit-blinka>=8.0.0
+
+# I2C和SPI支持
+adafruit-circuitpython-busdevice>=5.0.0
+
+# 通訊協議
+requests==2.31.0
+httpx==0.25.2
+paho-mqtt==1.6.1
+
+# 數據處理
+pandas==2.1.4
+scipy==1.11.4
+matplotlib==3.8.2
+
+# 資料庫
+# sqlite3 是內建的，不需要安裝
+asyncpg==0.29.0
+redis==5.0.1
+
+# 工具
+loguru==0.7.2
+python-dotenv==1.0.0
+click==8.1.7
+rich==13.7.0
+tqdm==4.66.1
+psutil==5.9.6
+
+# Raspberry Pi特定的感測器庫
+w1thermsensor>=2.0.0  # 溫度感測器
