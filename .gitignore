@@ -30,14 +30,14 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -51,27 +51,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# React
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# iOS
-*.xcuserdata
-*.xcworkspace
-!*.xcworkspace/contents.xcworkspacedata
-!*.xcworkspace/xcshareddata/
-DerivedData/
-build/
-*.ipa
-*.dSYM.zip
-*.dSYM
-
-# Logs
-logs
-*.log
+lerna-debug.log*
+.pnpm-debug.log*
 
 # Runtime data
 pids
@@ -81,47 +62,55 @@ pids
 
 # Coverage directory used by tools like istanbul
 coverage/
+*.lcov
 
 # Dependency directories
+node_modules/
 jspm_packages/
 
 # Optional npm cache directory
 .npm
 
-# Optional REPL history
-.node_repl_history
+# ESLint cache
+.eslintcache
 
-# Output of 'npm pack'
-*.tgz
+# React build output
+/web_demo/build
+/web_demo/dist
 
-# Yarn Integrity file
-.yarn-integrity
+# Logs
+logs/
+*.log
 
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
-
-# next.js build output
-.next
-
-# nuxt.js build output
-.nuxt
-
-# vuepress build directory
-.vuepress/dist
-
-# Serverless directories
-.serverless
-
-# Machine learning models
-*.pkl
-*.model
-*.h5
+# Hardware specific
+*.pcap
 
 # Temporary files
-*.tmp
-*.temp
+tmp/
+temp/
+
+# Models (will be downloaded)
+models/
+*.pt
+*.onnx
+
+# Data files
+data/
+maps/
+recordings/
 
 # Configuration files with sensitive data
-config.local.py
-.env.production
+config_local.py
+secrets.json
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environments
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

@@ -5,6 +5,8 @@ import {
   RobotConfig,
   GoalRequest,
   ManualControlRequest,
+  CarControlRequest,
+  CarStatus,
   ApiResponse,
   VisionStreamData,
   PathData,
@@ -202,6 +204,50 @@ export class RobotApiService {
     } catch (error) {
       console.error('健康檢查失敗:', error);
       return false;
+    }
+  }
+
+  // 核心車輛控制API
+  static async carControl(request: CarControlRequest): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.post<ApiResponse>('/api/car/control', request);
+      return response.data;
+    } catch (error) {
+      console.error('車輛控制失敗:', error);
+      throw new Error('無法執行車輛控制');
+    }
+  }
+
+  // 獲取車輛狀態
+  static async getCarStatus(): Promise<CarStatus> {
+    try {
+      const response = await apiClient.get<CarStatus>('/api/car/status');
+      return response.data;
+    } catch (error) {
+      console.error('獲取車輛狀態失敗:', error);
+      throw new Error('無法獲取車輛狀態');
+    }
+  }
+
+  // 重置車輛緊急停止
+  static async resetCarEmergency(): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.post<ApiResponse>('/api/car/emergency_reset');
+      return response.data;
+    } catch (error) {
+      console.error('重置車輛緊急停止失敗:', error);
+      throw new Error('無法重置車輛緊急停止');
+    }
+  }
+
+  // 測試車輛控制器
+  static async testCarController(): Promise<ApiResponse> {
+    try {
+      const response = await apiClient.get<ApiResponse>('/api/car/test');
+      return response.data;
+    } catch (error) {
+      console.error('測試車輛控制器失敗:', error);
+      throw new Error('無法測試車輛控制器');
     }
   }
 

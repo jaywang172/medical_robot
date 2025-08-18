@@ -105,6 +105,20 @@ export interface ManualControlRequest {
   duration?: number;
 }
 
+// 核心車輛控制類型
+export interface CarControlRequest {
+  action: 'forward' | 'backward' | 'turn_left' | 'turn_right' | 'stop' | 'emergency_stop';
+  duration?: number;
+}
+
+export interface CarStatus {
+  is_moving: boolean;
+  current_direction: string;
+  last_command_time: number;
+  emergency_stop: boolean;
+  simulation_mode: boolean;
+}
+
 export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;

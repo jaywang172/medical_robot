@@ -26,6 +26,7 @@ from robot_core.utils.logger import ContextualLogger
 from robot_core.navigation.path_planner import Point, NavigationCommand
 from robot_core.hardware.motor_controller import MotorCommand
 from robot_core.navigation.polycam_processor import PolycamProcessor
+from robot_core.hardware.car_run_turn import CarRunTurnController, create_car_controller
 
 
 # 數據模型
@@ -38,6 +39,21 @@ class ManualControlRequest(BaseModel):
     linear_speed: float  # -1.0 到 1.0
     angular_speed: float  # -1.0 到 1.0
     duration: float = 0.0
+
+
+class CarControlRequest(BaseModel):
+    """核心車輛控制請求"""
+    action: str  # forward, backward, turn_left, turn_right, stop, emergency_stop
+    duration: float = 0.5  # 持續時間
+
+
+class CarStatusResponse(BaseModel):
+    """車輛狀態響應"""
+    is_moving: bool
+    current_direction: str
+    last_command_time: float
+    emergency_stop: bool
+    simulation_mode: bool
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -134,6 +150,9 @@ def create_app(robot_system=None):
     websocket_manager = WebSocketManager()
     websocket_manager.set_robot_system(robot_system)
     
+    # 核心車輛控制器實例
+    car_controller: Optional[CarRunTurnController] = None
+    
     # 靜態文件
     # app.mount("/static", StaticFiles(directory="web_demo/build"), name="static")
     
@@ -160,7 +179,21 @@ def create_app(robot_system=None):
     # 啟動後台任務
     @app.on_event("startup")
     async def startup_event():
+        # 初始化車輛控制器
+        nonlocal car_controller
+        simulation_mode = not robot_system or getattr(robot_system.config, 'simulation', False)
+        car_controller = await create_car_controller(simulation=simulation_mode)
+        logger.info(f"車輛控制器已初始化 - {'模擬模式' if simulation_mode else '硬件模式'}")
+        
+        # 啟動狀態廣播
         asyncio.create_task(broadcast_robot_status())
+    
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        # 清理車輛控制器
+        if car_controller:
+            car_controller.cleanup()
+            logger.info("車輛控制器已清理")
     
     # WebSocket端點
     @app.websocket("/ws")
@@ -448,6 +481,114 @@ def create_app(robot_system=None):
             
         except Exception as e:
             logger.error(f"電機測試失敗: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    # 核心車輛控制API端點
+    @app.post("/api/car/control")
+    async def car_control(request: CarControlRequest):
+        """
+        核心車輛控制 - 直接GPIO控制
+        支援的動作: forward, backward, turn_left, turn_right, stop, emergency_stop
+        """
+        if not car_controller:
+            raise HTTPException(status_code=503, detail="車輛控制器未初始化")
+        
+        try:
+            action = request.action.lower()
+            duration = request.duration
+            
+            if action == "forward":
+                await car_controller.forward(duration)
+                message = f"前進 {duration}秒"
+            elif action == "backward":
+                await car_controller.backward(duration)
+                message = f"後退 {duration}秒"
+            elif action == "turn_left":
+                await car_controller.turn_left(duration)
+                message = f"左轉 {duration}秒"
+            elif action == "turn_right":
+                await car_controller.turn_right(duration)
+                message = f"右轉 {duration}秒"
+            elif action == "stop":
+                await car_controller.stop()
+                message = "停止"
+            elif action == "emergency_stop":
+                await car_controller.emergency_stop()
+                message = "緊急停止"
+            else:
+                raise HTTPException(status_code=400, detail=f"不支援的動作: {action}")
+            
+            return {
+                "success": True, 
+                "message": message,
+                "status": car_controller.get_status()
+            }
+            
+        except Exception as e:
+            logger.error(f"車輛控制失敗: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @app.get("/api/car/status")
+    async def get_car_status():
+        """獲取車輛控制器狀態"""
+        if not car_controller:
+            raise HTTPException(status_code=503, detail="車輛控制器未初始化")
+        
+        try:
+            status = car_controller.get_status()
+            return CarStatusResponse(**status)
+        except Exception as e:
+            logger.error(f"獲取車輛狀態失敗: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @app.post("/api/car/emergency_reset")
+    async def reset_car_emergency():
+        """重置車輛緊急停止狀態"""
+        if not car_controller:
+            raise HTTPException(status_code=503, detail="車輛控制器未初始化")
+        
+        try:
+            car_controller.reset_emergency_stop()
+            return {
+                "success": True,
+                "message": "緊急停止狀態已重置",
+                "status": car_controller.get_status()
+            }
+        except Exception as e:
+            logger.error(f"重置緊急停止失敗: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @app.get("/api/car/test")
+    async def test_car_controller():
+        """測試核心車輛控制器"""
+        if not car_controller:
+            raise HTTPException(status_code=503, detail="車輛控制器未初始化")
+        
+        try:
+            logger.info("開始車輛控制器測試序列")
+            
+            # 執行測試序列
+            await car_controller.forward(0.5)
+            await asyncio.sleep(0.2)
+            await car_controller.turn_right(0.5)
+            await asyncio.sleep(0.2)
+            await car_controller.backward(0.5)
+            await asyncio.sleep(0.2)
+            await car_controller.turn_left(0.5)
+            await asyncio.sleep(0.2)
+            await car_controller.stop()
+            
+            return {
+                "success": True,
+                "message": "車輛控制器測試完成",
+                "status": car_controller.get_status()
+            }
+            
+        except Exception as e:
+            logger.error(f"車輛控制器測試失敗: {e}")
+            # 確保測試失敗時停止
+            if car_controller:
+                await car_controller.emergency_stop()
             raise HTTPException(status_code=500, detail=str(e))
     
     # 地圖管理API
