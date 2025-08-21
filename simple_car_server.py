@@ -51,6 +51,9 @@ except ImportError:
 camera_cap = None
 picam2_instance = None
 
+# 全域車輛控制器
+car_controller: Optional[CarRunTurnController] = None
+
 def initialize_picamera2():
     """初始化 picamera2"""
     global picam2_instance
@@ -249,29 +252,7 @@ class VisionStreamResponse(BaseModel):
     obstacles: int
     processing_time: float
 
-# 創建FastAPI應用
-app = FastAPI(
-    title="🚗 簡化版樹莓派車輛控制API",
-    description="核心車輛控制和前端測試",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-# CORS設置
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# 創建FastAPI應用 (先定義再使用)
-app = None
-
-# 全域車輛控制器
-car_controller: Optional[CarRunTurnController] = None
-
+# 先定義 lifespan 函數
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     """FastAPI 應用生命周期管理"""
@@ -320,6 +301,23 @@ async def lifespan(app_instance: FastAPI):
         camera_cap.release()
         print("🧹 OpenCV 攝像頭已清理")
         camera_cap = None
+
+# 創建FastAPI應用
+app = FastAPI(
+    title="🚗 簡化版樹莓派車輛控制API",
+    description="核心車輛控制和前端測試",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# CORS設置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def root():
