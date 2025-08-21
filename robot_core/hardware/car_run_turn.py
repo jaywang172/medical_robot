@@ -11,20 +11,53 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
 
-try:
-    import RPi.GPIO as GPIO
-    PI_AVAILABLE = True
-except ImportError:
-    # 模擬模式，用於開發測試
-    PI_AVAILABLE = False
-    print("運行在模擬模式 - 樹莓派GPIO不可用")
+# 樹莓派5兼容的GPIO導入
+GPIO_LIB = None
+PI_AVAILABLE = False
+GPIO_BACKEND = "simulation"
 
-# 電機引腳配置
-Motor_R1_Pin = 16  # 右電機正轉
-Motor_R2_Pin = 18  # 右電機反轉
-Motor_L1_Pin = 11  # 左電機正轉
-Motor_L2_Pin = 13  # 左電機反轉
+# 嘗試導入GPIO庫，按優先級
+try:
+    # 首先嘗試 lgpio (樹莓派5推薦)
+    import lgpio
+    GPIO_LIB = "lgpio"
+    PI_AVAILABLE = True
+    GPIO_BACKEND = "lgpio"
+    print("✅ 使用 lgpio 庫 - Pi 5 兼容模式")
+except ImportError:
+    try:
+        # 嘗試 gpiozero (跨平台兼容)
+        from gpiozero import OutputDevice
+        GPIO_LIB = "gpiozero"
+        PI_AVAILABLE = True
+        GPIO_BACKEND = "gpiozero"
+        print("✅ 使用 gpiozero 庫 - 通用兼容模式")
+    except ImportError:
+        try:
+            # 最後嘗試傳統的 RPi.GPIO
+            import RPi.GPIO as GPIO
+            GPIO_LIB = "RPi.GPIO"
+            PI_AVAILABLE = True
+            GPIO_BACKEND = "RPi.GPIO"
+            print("✅ 使用 RPi.GPIO 庫 - 傳統模式")
+        except ImportError:
+            # 模擬模式，用於開發測試
+            PI_AVAILABLE = False
+            GPIO_BACKEND = "simulation"
+            print("⚠️ 運行在模擬模式 - 樹莓派GPIO不可用")
+
+# 電機引腳配置 (BOARD編號)
+Motor_R1_Pin = 16  # 右電機正轉 (BOARD 36, BCM 16)
+Motor_R2_Pin = 18  # 右電機反轉 (BOARD 12, BCM 18) 
+Motor_L1_Pin = 11  # 左電機正轉 (BOARD 23, BCM 11)
+Motor_L2_Pin = 13  # 左電機反轉 (BOARD 33, BCM 13)
 DEFAULT_DURATION = 0.5  # 默認運動時間
+
+# BCM模式下的引腳映射 (用於 gpiozero 和 lgpio)
+BCM_Motor_R1_Pin = 16  # GPIO16
+BCM_Motor_R2_Pin = 18  # GPIO18
+BCM_Motor_L1_Pin = 11  # GPIO11 
+BCM_Motor_L2_Pin = 13  # GPIO13
 
 
 class MotorDirection(Enum):
@@ -47,40 +80,150 @@ class MotorStatus:
 
 class CarRunTurnController:
     """
-    核心車輛控制器 - 整合版
-    提供基礎運動控制，可獨立使用或整合到更大系統
+    核心車輛控制器 - 樹莓派5兼容版
+    提供基礎運動控制，支持多種GPIO庫
     """
     
     def __init__(self, duration: float = DEFAULT_DURATION, simulation: bool = False):
         self.duration = duration
         self.simulation = simulation or not PI_AVAILABLE
         self.status = MotorStatus()
+        self.gpio_backend = GPIO_BACKEND
+        
+        # GPIO相關變量
+        self.gpio_handle = None
+        self.motor_pins = {}
         
         # 初始化GPIO（如果在真實硬件上）
         if not self.simulation:
-            self._initialize_gpio()
+            try:
+                self._initialize_gpio()
+                print(f"✅ GPIO初始化成功 - 使用 {self.gpio_backend}")
+            except Exception as e:
+                print(f"❌ GPIO 初始化失敗: {e}")
+                print("⚠️ 切換到模擬模式")
+                self.simulation = True
+                self.gpio_backend = "simulation"
         
-        print(f"CarRunTurnController 初始化完成 - {'模擬模式' if self.simulation else '硬件模式'}")
+        print(f"CarRunTurnController 初始化完成 - {'模擬模式' if self.simulation else '硬件模式'} ({self.gpio_backend})")
     
     def _initialize_gpio(self):
-        """初始化GPIO設置"""
+        """初始化GPIO設置 - 支持多種GPIO庫"""
         if self.simulation:
             return
-            
+        
+        if self.gpio_backend == "lgpio":
+            self._initialize_lgpio()
+        elif self.gpio_backend == "gpiozero":
+            self._initialize_gpiozero()
+        elif self.gpio_backend == "RPi.GPIO":
+            self._initialize_rpi_gpio()
+        else:
+            raise RuntimeError(f"不支持的GPIO後端: {self.gpio_backend}")
+    
+    def _initialize_lgpio(self):
+        """使用 lgpio 初始化 (樹莓派5推薦)"""
+        import lgpio
+        
+        # 打開GPIO芯片
+        self.gpio_handle = lgpio.gpiochip_open(0)
+        
+        # 設置引腳為輸出模式
+        pins = [BCM_Motor_R1_Pin, BCM_Motor_R2_Pin, BCM_Motor_L1_Pin, BCM_Motor_L2_Pin]
+        for pin in pins:
+            lgpio.gpio_claim_output(self.gpio_handle, pin, 0)  # 0 = 初始為LOW
+        
+        print("lgpio GPIO 初始化完成")
+    
+    def _initialize_gpiozero(self):
+        """使用 gpiozero 初始化 (通用兼容)"""
+        from gpiozero import OutputDevice
+        
+        # 創建輸出設備
+        self.motor_pins = {
+            'r1': OutputDevice(BCM_Motor_R1_Pin, active_high=True, initial_value=False),
+            'r2': OutputDevice(BCM_Motor_R2_Pin, active_high=True, initial_value=False),
+            'l1': OutputDevice(BCM_Motor_L1_Pin, active_high=True, initial_value=False),
+            'l2': OutputDevice(BCM_Motor_L2_Pin, active_high=True, initial_value=False)
+        }
+        
+        print("gpiozero GPIO 初始化完成")
+    
+    def _initialize_rpi_gpio(self):
+        """使用 RPi.GPIO 初始化 (傳統模式)"""
+        import RPi.GPIO as GPIO
+        
         GPIO.setmode(GPIO.BOARD)
         GPIO.setup(Motor_R1_Pin, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(Motor_R2_Pin, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(Motor_L1_Pin, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(Motor_L2_Pin, GPIO.OUT, initial=GPIO.LOW)
-        print("GPIO 初始化完成")
+        
+        print("RPi.GPIO 初始化完成")
 
 
     def _set_motor_pins(self, r1: bool, r2: bool, l1: bool, l2: bool):
-        """設置電機引腳狀態"""
+        """設置電機引腳狀態 - 支持多種GPIO庫"""
         if self.simulation:
             print(f"模擬電機控制: R1={r1}, R2={r2}, L1={l1}, L2={l2}")
             return
-            
+        
+        try:
+            if self.gpio_backend == "lgpio":
+                self._set_pins_lgpio(r1, r2, l1, l2)
+            elif self.gpio_backend == "gpiozero":
+                self._set_pins_gpiozero(r1, r2, l1, l2)
+            elif self.gpio_backend == "RPi.GPIO":
+                self._set_pins_rpi_gpio(r1, r2, l1, l2)
+        except Exception as e:
+            print(f"❌ GPIO控制錯誤: {e}")
+    
+    def _set_pins_lgpio(self, r1: bool, r2: bool, l1: bool, l2: bool):
+        """使用 lgpio 設置引腳"""
+        import lgpio
+        
+        if self.gpio_handle is None:
+            return
+        
+        pins_values = [
+            (BCM_Motor_R1_Pin, int(r1)),
+            (BCM_Motor_R2_Pin, int(r2)),
+            (BCM_Motor_L1_Pin, int(l1)),
+            (BCM_Motor_L2_Pin, int(l2))
+        ]
+        
+        for pin, value in pins_values:
+            lgpio.gpio_write(self.gpio_handle, pin, value)
+    
+    def _set_pins_gpiozero(self, r1: bool, r2: bool, l1: bool, l2: bool):
+        """使用 gpiozero 設置引腳"""
+        if not self.motor_pins:
+            return
+        
+        if r1:
+            self.motor_pins['r1'].on()
+        else:
+            self.motor_pins['r1'].off()
+        
+        if r2:
+            self.motor_pins['r2'].on()
+        else:
+            self.motor_pins['r2'].off()
+        
+        if l1:
+            self.motor_pins['l1'].on()
+        else:
+            self.motor_pins['l1'].off()
+        
+        if l2:
+            self.motor_pins['l2'].on()
+        else:
+            self.motor_pins['l2'].off()
+    
+    def _set_pins_rpi_gpio(self, r1: bool, r2: bool, l1: bool, l2: bool):
+        """使用 RPi.GPIO 設置引腳"""
+        import RPi.GPIO as GPIO
+        
         GPIO.output(Motor_R1_Pin, r1)
         GPIO.output(Motor_R2_Pin, r2)
         GPIO.output(Motor_L1_Pin, l1)
@@ -195,64 +338,112 @@ class CarRunTurnController:
         }
     
     def cleanup(self):
-        """清理資源"""
-        if not self.simulation and PI_AVAILABLE:
-            GPIO.cleanup()
-        print("CarRunTurnController 資源已清理")
+        """清理資源 - 支持多種GPIO庫"""
+        if self.simulation:
+            print("CarRunTurnController 資源已清理 (模擬模式)")
+            return
+        
+        try:
+            if self.gpio_backend == "lgpio" and self.gpio_handle is not None:
+                import lgpio
+                # 釋放所有引腳
+                pins = [BCM_Motor_R1_Pin, BCM_Motor_R2_Pin, BCM_Motor_L1_Pin, BCM_Motor_L2_Pin]
+                for pin in pins:
+                    try:
+                        lgpio.gpio_free(self.gpio_handle, pin)
+                    except:
+                        pass
+                # 關閉GPIO芯片
+                lgpio.gpiochip_close(self.gpio_handle)
+                self.gpio_handle = None
+                
+            elif self.gpio_backend == "gpiozero" and self.motor_pins:
+                # gpiozero 會自動清理
+                for pin_device in self.motor_pins.values():
+                    try:
+                        pin_device.close()
+                    except:
+                        pass
+                self.motor_pins = {}
+                
+            elif self.gpio_backend == "RPi.GPIO":
+                import RPi.GPIO as GPIO
+                GPIO.cleanup()
+                
+        except Exception as e:
+            print(f"❌ GPIO清理錯誤: {e}")
+        
+        print(f"CarRunTurnController 資源已清理 ({self.gpio_backend})")
 
 
 # 為了向後兼容，保留原始函數接口
+# 注意：這些函數僅支持 RPi.GPIO，建議使用 CarRunTurnController 類
 def stop():
-    """向後兼容的停止函數"""
-    if PI_AVAILABLE:
+    """向後兼容的停止函數 (僅限RPi.GPIO)"""
+    if PI_AVAILABLE and GPIO_BACKEND == "RPi.GPIO":
+        import RPi.GPIO as GPIO
         GPIO.output(Motor_R1_Pin, False)
         GPIO.output(Motor_R2_Pin, False)
         GPIO.output(Motor_L1_Pin, False)
         GPIO.output(Motor_L2_Pin, False)
+    else:
+        print("⚠️ 向後兼容函數僅支持 RPi.GPIO，請使用 CarRunTurnController 類")
 
 
 def forward():
-    """向後兼容的前進函數"""
-    if PI_AVAILABLE:
+    """向後兼容的前進函數 (僅限RPi.GPIO)"""
+    if PI_AVAILABLE and GPIO_BACKEND == "RPi.GPIO":
+        import RPi.GPIO as GPIO
         GPIO.output(Motor_R1_Pin, True)
         GPIO.output(Motor_R2_Pin, False)
         GPIO.output(Motor_L1_Pin, True)
         GPIO.output(Motor_L2_Pin, False)
         time.sleep(DEFAULT_DURATION)
         stop()
+    else:
+        print("⚠️ 向後兼容函數僅支持 RPi.GPIO，請使用 CarRunTurnController 類")
 
 
 def backward():
-    """向後兼容的後退函數"""
-    if PI_AVAILABLE:
+    """向後兼容的後退函數 (僅限RPi.GPIO)"""
+    if PI_AVAILABLE and GPIO_BACKEND == "RPi.GPIO":
+        import RPi.GPIO as GPIO
         GPIO.output(Motor_R1_Pin, False)
         GPIO.output(Motor_R2_Pin, True)
         GPIO.output(Motor_L1_Pin, False)
         GPIO.output(Motor_L2_Pin, True)
         time.sleep(DEFAULT_DURATION)
         stop()
+    else:
+        print("⚠️ 向後兼容函數僅支持 RPi.GPIO，請使用 CarRunTurnController 類")
 
 
 def turnRight():
-    """向後兼容的右轉函數"""
-    if PI_AVAILABLE:
+    """向後兼容的右轉函數 (僅限RPi.GPIO)"""
+    if PI_AVAILABLE and GPIO_BACKEND == "RPi.GPIO":
+        import RPi.GPIO as GPIO
         GPIO.output(Motor_R1_Pin, False)
         GPIO.output(Motor_R2_Pin, False)
         GPIO.output(Motor_L1_Pin, True)
         GPIO.output(Motor_L2_Pin, False)
         time.sleep(DEFAULT_DURATION)
         stop()
+    else:
+        print("⚠️ 向後兼容函數僅支持 RPi.GPIO，請使用 CarRunTurnController 類")
 
 
 def turnLeft():
-    """向後兼容的左轉函數"""
-    if PI_AVAILABLE:
+    """向後兼容的左轉函數 (僅限RPi.GPIO)"""
+    if PI_AVAILABLE and GPIO_BACKEND == "RPi.GPIO":
+        import RPi.GPIO as GPIO
         GPIO.output(Motor_R1_Pin, True)
         GPIO.output(Motor_R2_Pin, False)
         GPIO.output(Motor_L1_Pin, False)
         GPIO.output(Motor_L2_Pin, False)
         time.sleep(DEFAULT_DURATION)
         stop()
+    else:
+        print("⚠️ 向後兼容函數僅支持 RPi.GPIO，請使用 CarRunTurnController 類")
 
 
 # 整合API - 提供給主系統使用的接口
