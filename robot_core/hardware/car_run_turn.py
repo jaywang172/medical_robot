@@ -278,7 +278,7 @@ class CarRunTurnController:
             await self.stop()
 
     async def turn_right(self, duration: Optional[float] = None):
-        """右轉 - 左輪前進，右輪停止"""
+        """右轉 - 右輪前進，左輪停止 (修正邏輯)"""
         if self.status.emergency_stop:
             print("緊急停止狀態中，忽略右轉命令")
             return
@@ -286,7 +286,8 @@ class CarRunTurnController:
         duration = duration or self.duration
         print(f"右轉 {duration}秒")
         
-        self._set_motor_pins(False, False, True, False)
+        # 右輪前進，左輪停止 (R1=True, R2=False, L1=False, L2=False)
+        self._set_motor_pins(True, False, False, False)
         self.status.is_moving = True
         self.status.current_direction = MotorDirection.RIGHT
         self.status.last_command_time = time.time()
@@ -296,7 +297,7 @@ class CarRunTurnController:
             await self.stop()
 
     async def turn_left(self, duration: Optional[float] = None):
-        """左轉 - 右輪前進，左輪停止"""
+        """左轉 - 左輪前進，右輪停止 (修正邏輯)"""
         if self.status.emergency_stop:
             print("緊急停止狀態中，忽略左轉命令")
             return
@@ -304,7 +305,8 @@ class CarRunTurnController:
         duration = duration or self.duration
         print(f"左轉 {duration}秒")
         
-        self._set_motor_pins(True, False, False, False)
+        # 左輪前進，右輪停止 (R1=False, R2=False, L1=True, L2=False)
+        self._set_motor_pins(False, False, True, False)
         self.status.is_moving = True
         self.status.current_direction = MotorDirection.LEFT
         self.status.last_command_time = time.time()
@@ -419,12 +421,12 @@ def backward():
 
 
 def turnRight():
-    """向後兼容的右轉函數 (僅限RPi.GPIO)"""
+    """向後兼容的右轉函數 (僅限RPi.GPIO) - 右輪前進，左輪停止"""
     if PI_AVAILABLE and GPIO_BACKEND == "RPi.GPIO":
         import RPi.GPIO as GPIO
-        GPIO.output(Motor_R1_Pin, False)
+        GPIO.output(Motor_R1_Pin, True)   # 右電機正轉
         GPIO.output(Motor_R2_Pin, False)
-        GPIO.output(Motor_L1_Pin, True)
+        GPIO.output(Motor_L1_Pin, False)  # 左電機停止
         GPIO.output(Motor_L2_Pin, False)
         time.sleep(DEFAULT_DURATION)
         stop()
@@ -433,12 +435,12 @@ def turnRight():
 
 
 def turnLeft():
-    """向後兼容的左轉函數 (僅限RPi.GPIO)"""
+    """向後兼容的左轉函數 (僅限RPi.GPIO) - 左輪前進，右輪停止"""
     if PI_AVAILABLE and GPIO_BACKEND == "RPi.GPIO":
         import RPi.GPIO as GPIO
-        GPIO.output(Motor_R1_Pin, True)
+        GPIO.output(Motor_R1_Pin, False)  # 右電機停止
         GPIO.output(Motor_R2_Pin, False)
-        GPIO.output(Motor_L1_Pin, False)
+        GPIO.output(Motor_L1_Pin, True)   # 左電機正轉
         GPIO.output(Motor_L2_Pin, False)
         time.sleep(DEFAULT_DURATION)
         stop()
