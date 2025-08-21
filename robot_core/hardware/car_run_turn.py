@@ -46,18 +46,18 @@ except ImportError:
             GPIO_BACKEND = "simulation"
             print("⚠️ 運行在模擬模式 - 樹莓派GPIO不可用")
 
-# 電機引腳配置 (BOARD編號)
-Motor_R1_Pin = 16  # 右電機正轉 (BOARD 36, BCM 16)
-Motor_R2_Pin = 18  # 右電機反轉 (BOARD 12, BCM 18) 
-Motor_L1_Pin = 11  # 左電機正轉 (BOARD 23, BCM 11)
-Motor_L2_Pin = 13  # 左電機反轉 (BOARD 33, BCM 13)
+# 電機引腳配置 (按照用戶舊檔案 - BCM編號)
+Motor_R1_Pin = 23  # 右電機正轉 GPIO23
+Motor_R2_Pin = 24  # 右電機反轉 GPIO24
+Motor_L1_Pin = 17  # 左電機正轉 GPIO17
+Motor_L2_Pin = 27  # 左電機反轉 GPIO27
 DEFAULT_DURATION = 0.5  # 默認運動時間
 
 # BCM模式下的引腳映射 (用於 gpiozero 和 lgpio)
-BCM_Motor_R1_Pin = 16  # GPIO16
-BCM_Motor_R2_Pin = 18  # GPIO18
-BCM_Motor_L1_Pin = 11  # GPIO11 
-BCM_Motor_L2_Pin = 13  # GPIO13
+BCM_Motor_R1_Pin = 23  # GPIO23
+BCM_Motor_R2_Pin = 24  # GPIO24
+BCM_Motor_L1_Pin = 17  # GPIO17
+BCM_Motor_L2_Pin = 27  # GPIO27
 
 
 class MotorDirection(Enum):
@@ -278,7 +278,7 @@ class CarRunTurnController:
             await self.stop()
 
     async def turn_right(self, duration: Optional[float] = None):
-        """右轉 - 右輪前進，左輪停止 (修正邏輯)"""
+        """右轉 - 按照舊檔案邏輯 (右輪前進，左輪後退)"""
         if self.status.emergency_stop:
             print("緊急停止狀態中，忽略右轉命令")
             return
@@ -286,8 +286,8 @@ class CarRunTurnController:
         duration = duration or self.duration
         print(f"右轉 {duration}秒")
         
-        # 右輪前進，左輪停止 (R1=True, R2=False, L1=False, L2=False)
-        self._set_motor_pins(True, False, False, False)
+        # 按照舊檔案邏輯: R1=True(右輪前進), L2=True(左輪後退)
+        self._set_motor_pins(True, False, False, True)
         self.status.is_moving = True
         self.status.current_direction = MotorDirection.RIGHT
         self.status.last_command_time = time.time()
@@ -297,7 +297,7 @@ class CarRunTurnController:
             await self.stop()
 
     async def turn_left(self, duration: Optional[float] = None):
-        """左轉 - 左輪前進，右輪停止 (修正邏輯)"""
+        """左轉 - 按照舊檔案邏輯 (右輪後退，左輪前進)"""
         if self.status.emergency_stop:
             print("緊急停止狀態中，忽略左轉命令")
             return
@@ -305,8 +305,8 @@ class CarRunTurnController:
         duration = duration or self.duration
         print(f"左轉 {duration}秒")
         
-        # 左輪前進，右輪停止 (R1=False, R2=False, L1=True, L2=False)
-        self._set_motor_pins(False, False, True, False)
+        # 按照舊檔案邏輯: R2=True(右輪後退), L1=True(左輪前進)
+        self._set_motor_pins(False, True, True, False)
         self.status.is_moving = True
         self.status.current_direction = MotorDirection.LEFT
         self.status.last_command_time = time.time()
